@@ -21,7 +21,7 @@ import uuid
 import struct
 import contextlib
 from collections import defaultdict
-from cStringIO import StringIO
+from io import BytesIO
 
 __all__ = ('Tilt', 'Sketch', 'Stroke', 'ControlPoint',
            'BadTilt', 'BadMetadata', 'MissingKey')
@@ -38,7 +38,7 @@ STROKE_EXTENSION_BITS = {
 }
 STROKE_EXTENSION_BY_NAME = dict(
   (info[0], (bit, info[1]))
-  for (bit, info) in STROKE_EXTENSION_BITS.iteritems()
+  for (bit, info) in STROKE_EXTENSION_BITS.items()
   if bit != 'unknown'
 )
 
@@ -101,18 +101,22 @@ class MissingKey(BadMetadata): pass
 
 
 def validate_metadata(dct):
-  def lookup((path, parent), key):
+  def lookup(pathParentTuple, key):
+    (path, parent) = pathParentTuple
     child_path = '%s.%s' % (path, key)
     if key not in parent:
       raise MissingKey('Missing %s' % child_path)
     return (child_path, parent[key])
-  def check_string((path, val)):
-    if not isinstance(val, (str, unicode)):
+  def check_string(pathValTuple):
+    (path, val) = pathValTuple
+    if not isinstance(val, str):
       raise BadMetadata('Not string: %s' % path)
-  def check_float((path, val)):
-    if not isinstance(val, (float, int, long)):
+  def check_float(pathValTuple):
+    (path, val) = pathValTuple
+    if not isinstance(val, (float, int)):
       raise BadMetadata('Not number: %s' % path)
-  def check_array((path, val), desired_len=None, typecheck=None):
+  def check_array(pathValTuple, desired_len=None, typecheck=None):
+    (path, val) = pathValTuple
     if not isinstance(val, (list, tuple)):
       raise BadMetadata('Not array: %s' % path)
     if desired_len and len(val) != desired_len:
@@ -121,7 +125,8 @@ def validate_metadata(dct):
       for i, child_val in enumerate(val):
         child_path = '%s[%s]' % (path, i)
         typecheck((child_path, child_val))
-  def check_guid((path, val)):
+  def check_guid(pathValTuple):
+    (path, val) = pathValTuple
     try:
       uuid.UUID(val)
     except Exception as e:
@@ -186,7 +191,7 @@ class Tilt(object):
       try:
         validate_metadata(self.metadata)
       except BadMetadata as e:
-        print 'WARNING: %s' % e
+        print('WARNING: %s' % e)
 
   def write_sketch(self):
     if False:
@@ -197,7 +202,7 @@ class Tilt(object):
       if old_brushes != new_brushes:
         new_index_to_brush = sorted(new_brushes)
         brush_to_new_index = dict( (b, i) for (i, b) in enumerate(new_index_to_brush) )
-        old_index_to_new_index = map(brush_to_new_index.get, old_index_to_brush)
+        old_index_to_new_index = list(map(brush_to_new_index.get, old_index_to_brush))
         for stroke in self.sketch.strokes:
           stroke.brush_idx = brush_to_new_index[old_index_to_brush[stroke.brush_idx]]
         with self.mutable_metadata() as dct:
@@ -240,7 +245,7 @@ class Tilt(object):
       # Copy into self.metadata, preserving topmost reference
       for k in list(self.metadata.keys()):
         del self.metadata[k]
-      for k,v in mutable_dct.iteritems():
+      for k,v in mutable_dct.items():
         self.metadata[k] = copy.deepcopy(v)
         
       new_contents = json.dumps(
@@ -278,7 +283,7 @@ def _make_ext_reader(ext_bits, ext_mask):
   names = [info[0] for info in infos]
   if '@' in fmt:
     # struct.unpack isn't general enough to do the job
-    print fmt, names, infos
+    print(fmt, names, infos)
     fmts = ['<'+info[1] for info in infos]
     def reader(f, fmts=fmts):
       values = [None] * len(fmts)
@@ -335,7 +340,7 @@ class Sketch(object):
 
   def write(self, destination):
     """destination is either a file name, a file-like instance, or a Tilt instance."""
-    tmpf = StringIO()
+    tmpf = BytesIO()
     self._write(binfile(tmpf))
     data = tmpf.getvalue()
 
@@ -355,7 +360,7 @@ class Sketch(object):
     self.additional_header = b.read_length_prefixed()
     (num_strokes, ) = b.unpack("<i")
     assert 0 <= num_strokes < 300000, num_strokes
-    self.strokes = [Stroke.from_file(b) for i in xrange(num_strokes)]
+    self.strokes = [Stroke.from_file(b) for i in range(num_strokes)]
 
   def _write(self, b):
     # b is a binfile instance.
@@ -401,7 +406,7 @@ class Stroke(object):
   def clone(self):
     """Returns a deep copy of the stroke."""
     inst = self.shallow_clone()
-    inst.controlpoints = map(ControlPoint.clone, inst.controlpoints)
+    inst.controlpoints = list(map(ControlPoint.clone, inst.controlpoints))
     return inst
 
   def __getattr__(self, name):
@@ -458,8 +463,8 @@ class Stroke(object):
   @memoized_property
   def controlpoints(self):
     (cp_ext_reader, num_cp, raw_data) = self.__dict__.pop('_controlpoints')
-    b = binfile(StringIO(raw_data))
-    return [ControlPoint.from_file(b, cp_ext_reader) for i in xrange(num_cp)]
+    b = binfile(BytesIO(raw_data))
+    return [ControlPoint.from_file(b, cp_ext_reader) for i in range(num_cp)]
 
   def has_stroke_extension(self, name):
     """Returns true if this stroke has the requested extension data.
@@ -484,7 +489,7 @@ class Stroke(object):
     else:
       # Convert from idx->value to name->value
       name_to_value = dict( (name, self.extension[idx])
-                            for (name, idx) in self.stroke_ext_lookup.iteritems() )
+                            for (name, idx) in self.stroke_ext_lookup.items() )
       name_to_value[name] = value
 
       bit, exttype = STROKE_EXTENSION_BY_NAME[name]
@@ -494,7 +499,7 @@ class Stroke(object):
       
       # Convert back to idx->value
       self.extension = [None] * len(self.stroke_ext_lookup)
-      for (name, idx) in self.stroke_ext_lookup.iteritems():
+      for (name, idx) in self.stroke_ext_lookup.items():
         self.extension[idx] = name_to_value[name]
                                                           
   def delete_stroke_extension(self, name):
@@ -504,7 +509,7 @@ class Stroke(object):
 
     # Convert from idx->value to name->value
     name_to_value = dict( (name, self.extension[idx])
-                          for (name, idx) in self.stroke_ext_lookup.iteritems() )
+                          for (name, idx) in self.stroke_ext_lookup.items() )
     del name_to_value[name]
 
     bit, exttype = STROKE_EXTENSION_BY_NAME[name]
@@ -514,7 +519,7 @@ class Stroke(object):
 
     # Convert back to idx->value
     self.extension = [None] * len(self.stroke_ext_lookup)
-    for (name, idx) in self.stroke_ext_lookup.iteritems():
+    for (name, idx) in self.stroke_ext_lookup.items():
       self.extension[idx] = name_to_value[name]
 
   def has_cp_extension(self, name):
