@@ -24,7 +24,7 @@ try:
     os.path.abspath(__file__))), 'Python'))
   from tiltbrush.tilt import Tilt
 except ImportError:
-  print >>sys.stderr, "Please put the 'Python' directory in your PYTHONPATH"
+  print("Please put the 'Python' directory in your PYTHONPATH", file=sys.stderr)
   sys.exit(1)
 
 
@@ -130,8 +130,8 @@ class ColladaFile(object):
   def write(self, filename):
     header = '<?xml version="1.0" encoding="UTF-8"?>\n'
     _indent(self.root)
-    with file(filename, 'wb') as outf:
-      outf.write(header)
+    with open(filename, 'wb') as outf:
+      outf.write(header.encode())
       self.tree.write(outf)
 
   def add_stroke(self, stroke):
@@ -186,7 +186,7 @@ class ColladaFile(object):
         ]),
         Element('linestrips', count='1', material='Material1', children=[
           Element('input', offset='0', semantic='VERTEX', set='0', source='#' + verts_id),
-          Element('p', text=' '.join(map(str, xrange(len(raw_floats) / 3))))
+          Element('p', text=' '.join(map(str, range(len(raw_floats) // 3))))
         ])
       ])
     )
@@ -230,7 +230,7 @@ def main(args):
       dae.add_stroke(stroke)
 
     dae.write(outf_name)
-    print 'Wrote', outf_name
+    print('Wrote', outf_name)
 
 
 if __name__ == '__main__':
